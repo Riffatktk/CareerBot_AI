@@ -1,6 +1,3 @@
-# CareerBot_AI
-
-
 <div align="center">
 
 # CareerBot AI
