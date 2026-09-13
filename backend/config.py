@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     secret_key: str = "dev-secret-key"
     upload_dir: str = "./uploads"
+    cron_secret: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from database import Base, engine
 import models  # noqa: F401 - ensures every model is registered on Base.metadata
-from routers import resume, agent, jobs
+from routers import resume, agent, jobs, cron
 
 logging.basicConfig(level=logging.INFO)
 
@@ -27,6 +27,7 @@ app.add_middleware(
 app.include_router(resume.router)
 app.include_router(agent.router)
 app.include_router(jobs.router)
+app.include_router(cron.router)
 
 
 @app.on_event("startup")
