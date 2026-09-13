@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="CareerBot AI is an autonomous AI-powered job finding assistant that scans job boards on your behalf and matches you with the roles that fit best."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <title>CareerBot AI</title>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("careerbot-theme");
+          if (t) {
+            document.documentElement.className = t;
+          } else if (
+            window.matchMedia("(prefers-color-scheme: dark)").matches
+          ) {
+            document.documentElement.className = "dark";
+          } else {
+            document.documentElement.className = "light";
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

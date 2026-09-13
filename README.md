@@ -1,342 +1,535 @@
-<div align="center">
-
 # CareerBot AI
 
-**Autonomous AI-Powered Job Finding Assistant**
+![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3-38BDF8?logo=tailwindcss&logoColor=white)
+![Gemini AI](https://img.shields.io/badge/Gemini-1.5_Flash-4285F4?logo=googlegemini&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-blue.svg)
 
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-18+-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
-[![Gemini AI](https://img.shields.io/badge/Gemini_AI-Free_Tier-4285F4?style=flat-square&logo=google&logoColor=white)](https://aistudio.google.com)
-[![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](LICENSE)
-
-[Features](#features) · [Architecture](#architecture) · [Tech Stack](#tech-stack) · [Getting Started](#getting-started) · [API Reference](#api-reference) · [Team](#team)
-
-</div>
-
----
-
-## Overview
-
-CareerBot AI is an autonomous job-hunting assistant that removes the daily grind of manually browsing job boards. The user uploads their resume once, issues a single prompt, and the agent runs on a continuous schedule — waking at **9:00 AM every day** to retrieve jobs posted in the past 24 hours that match the candidate's profile.
-
-Google Gemini AI parses the uploaded resume and scores each job listing for relevance. LinkedIn, Indeed, and Glassdoor are scraped simultaneously through a single open-source library. Results are delivered to a web dashboard as structured, ranked job cards with direct application links.
-
-> Built for the Panaversity Agentic AI Course Hackathon — September 2026
-
----
+CareerBot AI is a single-prompt, autonomous job-finding agent. A candidate
+uploads a resume (or picks a one-click demo profile), describes the roles
+they want, and starts the agent. From that point on, the agent runs on a
+daily 9:00 AM UTC schedule, scraping LinkedIn, Indeed, and Glassdoor via
+JobSpy, scoring every listing against the candidate's Gemini-parsed
+skills, and surfacing a ranked, filterable feed on a live dashboard. The
+project is a React single-page frontend talking to a FastAPI backend
+entirely over HTTP, so each half can be developed and deployed
+independently. Resume parsing, job match scoring, live scraping, and the
+daily autonomous scan are all real — the initial agent start still seeds
+a fixed set of mock jobs so the dashboard has something to show
+immediately, with real scraped/scored listings arriving on the first
+"Run Now" or scheduled scan.
 
 ## Features
 
-- **Resume Parsing** — Accepts PDF and DOCX files. Gemini AI automatically extracts skills, years of experience, job titles, and education.
-- **Loop Engineering** — A single prompt activates the agent. It then operates in a fully autonomous daily cycle until the user manually stops it.
-- **Daily Scheduled Scan** — APScheduler triggers a job search every morning at 9:00 AM, covering only listings posted in the preceding 24 hours.
-- **AI Match Scoring** — Every job is scored against the parsed resume profile with a percentage relevance score and a plain-English explanation.
-- **Multi-Platform Coverage** — JobSpy scrapes LinkedIn, Indeed, and Glassdoor in a single function call with no platform API keys required.
-- **Structured Job Cards** — Each result includes job title, company, AI-summarised description, salary range, work mode (remote / onsite / hybrid), location, posting date, match score, and a direct application link.
-- **Immediate Trigger** — A "Run Now" action allows instant agent execution for testing and demonstration without waiting for the scheduled time.
-- **Zero-Cost AI** — Powered by the Google Gemini 1.5 Flash free tier (1,500 requests per day) with Groq API as a configured fallback.
-
----
+- One-click demo profiles or real PDF/DOCX resume upload, with drag-and-drop
+  validation and a live preview
+- Full agent lifecycle control — start, stop, restart, and trigger an
+  immediate out-of-schedule scan — with optimistic UI feedback throughout
+- A resume profile view with a parsed skills timeline, work history, and
+  a demand-by-skill chart matched against the job market
+- A live job feed with client-side search, work-mode filtering, and
+  sorting that update instantly with no re-fetch
+- A slide-over job detail drawer with match rationale and resume-keyword
+  highlighting on required skills
+- An agent control center with a real-time countdown to the next
+  scheduled scan, a visual daily-schedule timeline, and per-source
+  toggles
+- A run history log with trend and source-breakdown charts, plus a
+  per-run match-score distribution breakdown
+- Light and dark themes built on CSS custom properties, with system
+  preference detection, persistence, and zero flash of unstyled content
+- Fluid Framer Motion animations throughout — staggered card entry,
+  drawer slide, status pulses, and animated chart arcs
 
 ## Architecture
 
+### Three-Tier System
+
 ```
-+---------------------------------------------------------------+
-|                   USER BROWSER  (React.js)                    |
-|  Resume Upload  |  Job Dashboard  |  Agent Controls  |  History  |
-+-----------------------------+---------------------------------+
-                              |  REST API (HTTP)
-+-----------------------------v---------------------------------+
-|                  BACKEND  (FastAPI + Python)                  |
-|   Resume Parser  |  AI Agent  |  Job Scraper  |  Scheduler   |
-+------+-------------------+------------------+----------+-----+
-       |                   |                  |          |
-  PyMuPDF /          Gemini API         LinkedIn /    SQLite /
-  python-docx        (Free AI)          Indeed /      PostgreSQL
-                                        Glassdoor
++-------------------+        HTTP/JSON        +--------------------+
+|                   |  ------------------->    |                    |
+|   React Frontend  |                           |   FastAPI Backend  |
+|  (Vite, :5173)    |  <-------------------    |      (:8000)       |
+|                   |                           |                    |
++-------------------+                           +---------+----------+
+                                                           |
+                                                           v
+                                        +----------------------------------+
+                                        |     External Integrations         |
+                                        |  - Gemini 1.5 Flash (parsing/AI)  |
+                                        |  - JobSpy: LinkedIn/Indeed/       |
+                                        |    Glassdoor (scraping)           |
+                                        |  - SQLite (dev) / PostgreSQL      |
+                                        |    (prod) — storage               |
+                                        +----------------------------------+
 ```
 
 ### Agent Loop
 
 ```
-[USER STARTS AGENT]
-        |
-        v
-Scheduler registers a daily cron job at 9:00 AM
-        |
-        v
-+------------------------------------------+
-|  9:00 AM  --  Wake up                   |
-|  --> Scrape LinkedIn / Indeed (24 h)    |
-|  --> AI scores and ranks each listing   |
-|  --> Persist results to database        |
-|  --> Update job dashboard               |
-|  --> Sleep until next 9:00 AM          | <---- LOOP
-+------------------------------------------+
-        |
-[USER MANUALLY STOPS]  -->  Agent enters IDLE state
+        +---------------------+
+        |  Resume Uploaded +   |
+        |  Preference Prompt   |
+        +-----------+----------+
+                     |
+                     v
+        +---------------------+
+        |   Agent Started      |
+        |   (status: ACTIVE)   |
+        +-----------+----------+
+                     |
+      +--------------+---------------+
+      |    Scheduler Tick (09:00)    | <--- or triggered manually
+      |      or "Run Now"            |      via "Run Now"
+      +--------------+---------------+
+                     |
+                     v
+        +---------------------+
+        |  Scrape Job Boards   |
+        |  (LinkedIn/Indeed/   |
+        |   Glassdoor)         |
+        +-----------+----------+
+                     |
+                     v
+        +---------------------+
+        |  AI Match Scoring    |
+        |  (resume vs. job)    |
+        +-----------+----------+
+                     |
+                     v
+        +---------------------+
+        |  Persist + Rank Jobs |
+        +-----------+----------+
+                     |
+                     v
+        +---------------------+
+        |  Dashboard Updated   |
+        +-----------+----------+
+                     |
+                     +-----------------> back to Scheduler Tick
 ```
-
----
 
 ## Tech Stack
 
-| Layer | Technology | Purpose |
-|---|---|---|
-| Frontend Framework | React.js 18 + Vite | Single-page application |
-| Styling | Tailwind CSS + shadcn/ui | UI components and layout |
-| State Management | Zustand + React Query | Global state and API polling |
-| HTTP Client | Axios | REST calls from frontend to backend |
-| Backend Framework | FastAPI + Uvicorn | REST API server with async support |
-| Task Scheduler | APScheduler 3 | Daily 9:00 AM cron job |
-| AI Provider | Google Gemini 1.5 Flash | Resume parsing and job relevance scoring |
-| AI Fallback | Groq API (Llama 3, free) | Backup if Gemini rate limits are reached |
-| Job Data | JobSpy (Python) | LinkedIn + Indeed + Glassdoor scraper |
-| Resume Parsing | PyMuPDF + python-docx | Text extraction from PDF and DOCX files |
-| Data Validation | Pydantic v2 | Request and response schema validation |
-| Database (Dev) | SQLite | Zero-configuration local database |
-| Database (Prod) | PostgreSQL | Production-grade relational database |
-| ORM | SQLAlchemy 2 + Alembic | Database models and migrations |
-| Containerisation | Docker + Docker Compose | Consistent local and production environment |
-| Frontend Deploy | Vercel (free tier) | Static site hosting |
-| Backend Deploy | Railway (free tier) | Cloud hosting for FastAPI and scheduler |
-
----
+| Layer              | Technology                      | Purpose                                              |
+| ------------------ | -------------------------------- | ------------------------------------------------------ |
+| Frontend Framework | React 18 + Vite                  | Component-based UI with a fast dev server              |
+| Styling            | Tailwind CSS 3                   | Utility-first styling driven by CSS custom properties   |
+| Components         | shadcn/ui, CVA, Radix Slot       | Accessible, composable UI primitives                    |
+| State (client)     | Zustand                          | Global state for agent status and theme                |
+| Data Fetching      | TanStack React Query v5          | Server-state caching, polling, and error handling       |
+| HTTP Client        | Axios                            | Centralized API client with interceptors                |
+| Routing            | React Router v6                  | Client-side navigation                                  |
+| Animation          | Framer Motion                    | Page transitions, staggered lists, drawer, status pulse |
+| Charts             | Recharts                         | Skill demand, scan trends, and source-breakdown charts  |
+| File Upload        | react-dropzone                   | Drag-and-drop resume upload                             |
+| Dates              | date-fns                         | Relative time and datetime formatting                   |
+| Icons              | Lucide React                     | Consistent icon set                                     |
+| Class Utilities    | clsx, tailwind-merge             | Conditional and conflict-free class composition         |
+| Backend Framework  | FastAPI                          | Async Python API server                                 |
+| Backend Server     | Uvicorn                          | ASGI server for FastAPI                                 |
+| ORM                | SQLAlchemy 2.0 (async)           | Database models and queries                              |
+| Migrations         | Alembic                          | Versioned schema migrations                              |
+| Database Drivers   | aiosqlite (dev), asyncpg (prod)  | Async drivers for SQLite and PostgreSQL                  |
+| Containerization   | Docker Compose                   | Local multi-service orchestration                       |
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18 or later
+- Node.js 18 or later and npm
 - Python 3.11 or later
-- Git
-- A Google Gemini API key — available free at [aistudio.google.com](https://aistudio.google.com) (no credit card required)
+- Docker and Docker Compose (optional, for containerized setup)
 
-### 1. Clone the Repository
+### Backend Setup
 
-```bash
-git clone https://github.com/your-org/careerbot-ai.git
-cd careerbot-ai
+1. Navigate to the backend directory:
+   ```
+   cd backend
+   ```
+2. Create and activate a virtual environment:
+   ```
+   python -m venv venv
+   source venv/bin/activate   # On Windows: venv\Scripts\activate
+   ```
+3. Install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+4. Copy the environment template:
+   ```
+   cp .env.example .env
+   ```
+5. Start the API server:
+   ```
+   uvicorn main:app --reload
+   ```
+6. The API is now available at `http://localhost:8000`, with interactive
+   docs at `http://localhost:8000/docs`.
+
+### Frontend Setup
+
+1. Navigate to the frontend directory:
+   ```
+   cd frontend
+   ```
+2. Install dependencies:
+   ```
+   npm install
+   ```
+3. Start the development server:
+   ```
+   npm run dev
+   ```
+4. Open `http://localhost:5173` in your browser. The frontend expects the
+   backend to be running at `http://localhost:8000`.
+
+### Database Setup
+
+The backend persists to SQLite by default (via `aiosqlite`) and to
+PostgreSQL in production (via `asyncpg`), using SQLAlchemy 2.0's async
+ORM. Tables are created automatically on startup — `uvicorn main:app
+--reload` calls `init_db()` in its lifespan handler, which runs
+`Base.metadata.create_all` against `DATABASE_URL` from `.env`
+(`sqlite+aiosqlite:///./careerbot.db` by default) — so no manual step is
+required to get a working database for local development.
+
+An Alembic scaffold (`backend/alembic.ini`, `backend/alembic/env.py`,
+`backend/alembic/script.py.mako`) is included for versioned schema
+migrations, configured for SQLAlchemy's async-engine migration pattern
+so it targets the same `DATABASE_URL` the app uses. It has not been
+initialized with a first revision yet — `alembic/versions/` is currently
+empty. To generate and apply one:
+
 ```
-
-### 2. Backend Setup
-
-```bash
 cd backend
-
-# Create and activate a virtual environment
-python -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment variables
-cp .env.example .env
-# Open .env and set GEMINI_API_KEY and any other required values
-
-# Apply database migrations
+alembic revision --autogenerate -m "initial schema"
 alembic upgrade head
-
-# Start the development server
-uvicorn main:app --reload
-# Server runs at  http://localhost:8000
-# Auto-generated API docs at  http://localhost:8000/docs
 ```
 
-### 3. Frontend Setup
+Run `alembic revision --autogenerate` again after changing any model in
+`backend/models/models.py`, then `alembic upgrade head` to apply it.
 
-```bash
-# Open a new terminal from the project root
-cd frontend
+### Docker Compose
 
-npm install
-npm run dev
-# Application runs at  http://localhost:5173
+1. From the repository root, copy the environment template (the backend
+   service loads it via `env_file`, so this step is required — Compose
+   will fail to start otherwise):
+   ```
+   cp .env.example .env
+   ```
+2. Build and start both services:
+   ```
+   docker compose up --build
+   ```
+3. The frontend will be available at `http://localhost:5173` and the
+   backend at `http://localhost:8000`. Source directories are mounted as
+   volumes, so changes to either service hot-reload automatically.
+4. Stop the stack with:
+   ```
+   docker compose down
+   ```
+
+### Running Tests
+
+```
+cd backend
+source venv/bin/activate   # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+pytest
 ```
 
-### 4. Docker Compose (Optional)
+## Deployment
 
-To run the frontend, backend, and database together in isolated containers:
+### Frontend — Vercel
 
-```bash
-docker-compose up --build
-```
+1. Push the repository to GitHub.
+2. Go to vercel.com and import the repository.
+3. Set the root directory to `frontend`.
+4. Add environment variable: `VITE_API_URL` = your Railway backend URL.
+5. Deploy. Vercel handles the build automatically.
 
----
+### Backend — Railway
+
+1. Go to railway.app and create a new project.
+2. Connect your GitHub repository.
+3. Set the root directory to `backend`.
+4. Add environment variables in Railway dashboard:
+   - `GEMINI_API_KEY`
+   - `DATABASE_URL` (Railway provides PostgreSQL — use the provided URL)
+   - `SECRET_KEY`
+5. Railway detects the Procfile and deploys automatically.
+
+### Database — PostgreSQL on Railway
+
+Railway offers a free PostgreSQL addon.
+Add it to your project and copy the `DATABASE_URL` it provides.
+The backend auto-creates all tables on startup via `init_db()`.
 
 ## Environment Variables
 
-Copy `/backend/.env.example` to `/backend/.env` and populate the following:
+All variables are defined in `backend/.env.example`.
 
-```env
-# AI
-GEMINI_API_KEY=your_gemini_api_key_here
-GROQ_API_KEY=your_groq_api_key_here        # Optional fallback
-
-# Database
-DATABASE_URL=sqlite:///./careerbot.db      # SQLite for development
-# DATABASE_URL=postgresql://user:pass@host/db  # PostgreSQL for production
-
-# Agent Schedule
-AGENT_RUN_HOUR=9                           # 24-hour format
-AGENT_RUN_MINUTE=0
-
-# Server
-CORS_ORIGINS=http://localhost:5173
-SECRET_KEY=your_secret_key_here
-```
-
----
+| Variable            | Description                                                          |
+| -------------------- | ----------------------------------------------------------------------- |
+| `GEMINI_API_KEY`     | API key for Google Gemini, used for resume parsing and match scoring |
+| `GROQ_API_KEY`       | API key for Groq, an alternate fast-inference LLM provider            |
+| `DATABASE_URL`       | Database connection string (SQLite by default)                        |
+| `AGENT_RUN_HOUR`     | Hour of day (24h) the scheduled agent scan runs                       |
+| `AGENT_RUN_MINUTE`   | Minute of the hour the scheduled agent scan runs                      |
+| `CORS_ORIGINS`       | Comma-separated list of origins allowed to call the API                |
+| `SECRET_KEY`         | Secret key used for signing application-level tokens                  |
 
 ## Project Structure
 
 ```
 careerbot-ai/
-|
-+-- frontend/                       React.js application
-|   +-- src/
-|   |   +-- components/
-|   |   |   +-- JobCard.jsx         Individual job listing card
-|   |   |   +-- AgentPanel.jsx      Agent start / stop controls
-|   |   |   +-- ResumeUpload.jsx    Drag-and-drop upload component
-|   |   +-- pages/
-|   |   |   +-- Dashboard.jsx       Main job feed with filters
-|   |   |   +-- Upload.jsx          Resume upload and parsing page
-|   |   |   +-- History.jsx         Past agent run history
-|   |   +-- store/                  Zustand state management
-|   |   +-- api/                    Axios API client and hooks
-|   +-- package.json
-|
-+-- backend/                        FastAPI application
-|   +-- main.py                     Application entry point and CORS config
-|   +-- routers/
-|   |   +-- resume.py               /api/resume endpoints
-|   |   +-- agent.py                /api/agent endpoints
-|   |   +-- jobs.py                 /api/jobs endpoints
-|   +-- services/
-|   |   +-- resume_parser.py        PyMuPDF and python-docx extraction
-|   |   +-- ai_service.py           Gemini API integration and prompts
-|   |   +-- job_scraper.py          JobSpy integration and filtering
-|   |   +-- scheduler.py            APScheduler configuration
-|   +-- models/                     SQLAlchemy ORM models
-|   +-- schemas/                    Pydantic request and response schemas
-|   +-- alembic/                    Database migration scripts
-|   +-- requirements.txt
-|   +-- .env.example
-|
-+-- docker-compose.yml
-+-- README.md
+├── frontend/
+│   ├── public/
+│   │   └── favicon.svg           # Browser tab icon
+│   ├── src/
+│   │   ├── api/
+│   │   │   └── client.js         # Axios instance + typed API functions
+│   │   ├── components/
+│   │   │   ├── layout/           # Navbar (with mobile tab bar), PageWrapper
+│   │   │   ├── agent/            # Status strip, control cards, activity log
+│   │   │   ├── jobs/             # Job card, grid, drawer, filters, skeleton
+│   │   │   ├── resume/           # Upload zone, file preview, demo profile card
+│   │   │   └── shared/           # Cross-cutting UI: badges, spinner, empty/error states
+│   │   ├── hooks/                # useTheme, useAgent, useJobs, useResumeUpload
+│   │   ├── pages/                # Landing, Resume Profile, Job Feed, Agent Control, Run History, 404
+│   │   ├── store/                # Zustand stores (agent + resume, theme)
+│   │   ├── styles/                # Global CSS and design tokens
+│   │   ├── utils/                 # Formatters and shared constants
+│   │   ├── App.jsx                # Router and provider setup
+│   │   └── main.jsx                # React root entrypoint
+│   ├── index.html                 # HTML entrypoint with anti-flash theme script
+│   ├── package.json
+│   ├── vite.config.js              # Vite config, path alias, dev proxy
+│   ├── tailwind.config.js          # Tailwind theme tokens and dark mode config
+│   ├── postcss.config.js
+│   ├── vercel.json                 # SPA rewrites + security headers for Vercel
+│   ├── .env.example                # VITE_API_URL template (local)
+│   └── .env.production             # VITE_API_URL for the deployed backend
+├── backend/
+│   ├── main.py                     # FastAPI app instance, lifespan (init_db + scheduler), CORS, routers
+│   ├── database.py                 # Async SQLAlchemy engine/session config
+│   ├── models/
+│   │   └── models.py                # SQLAlchemy ORM models (User, Resume, AgentState, RunLog, Job)
+│   ├── schemas/
+│   │   └── schemas.py               # Pydantic request/response schemas
+│   ├── routers/
+│   │   ├── resume.py               # Resume upload endpoint — PyMuPDF/docx extraction + Gemini parsing
+│   │   ├── agent.py                # Agent lifecycle endpoints — JobSpy scraping + Gemini scoring on run
+│   │   └── jobs.py                 # Job listing endpoints (DB-backed)
+│   ├── services/
+│   │   ├── ai_service.py            # Gemini resume parsing + job match scoring
+│   │   ├── resume_parser.py         # PDF/DOCX text extraction
+│   │   ├── job_scraper.py           # JobSpy scraping (LinkedIn/Indeed/Glassdoor)
+│   │   └── scheduler.py             # APScheduler daily 09:00 UTC scan for all active agents
+│   ├── tests/                       # pytest suite (health, resume, agent, jobs)
+│   ├── utils.py                     # Shared helpers (serialization, timestamps, session resolution)
+│   ├── seed.py                      # Mock job data seeded into the DB on agent start
+│   ├── alembic/                     # Async-pattern migration environment (see Database Setup)
+│   ├── alembic.ini
+│   ├── pytest.ini
+│   ├── Procfile                    # Railway/Render start command
+│   ├── railway.json                # Railway build/deploy config
+│   ├── requirements.txt            # Backend Python dependencies
+│   └── .env.example                # Environment variable template
+├── docker-compose.yml               # Frontend + backend service orchestration
+├── .env.example                     # Root env template (used by docker-compose env_file)
+├── .gitignore
+├── README.md
+├── CONTRIBUTING.md
+└── CODE_OF_CONDUCT.md
 ```
-
----
 
 ## API Reference
 
-Full interactive documentation is available at `http://localhost:8000/docs` once the backend is running.
+| Method | Endpoint              | Description                                                |
+| ------ | ---------------------- | ------------------------------------------------------------ |
+| POST   | `/api/resume/upload`   | Upload a resume file and receive a parsed representation     |
+| POST   | `/api/agent/start`     | Start the agent with a resume ID and preference prompt       |
+| POST   | `/api/agent/stop`      | Stop the currently running agent                              |
+| POST   | `/api/agent/run-now`   | Trigger an immediate, out-of-schedule agent run                |
+| GET    | `/api/agent/status`    | Fetch current agent status, stats, and run history             |
+| GET    | `/api/jobs`             | List all discovered job matches                                |
+| GET    | `/api/jobs/{id}`        | Fetch a single job listing by ID (e.g. `job_001`)               |
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/resume/upload` | Upload and parse a resume file (PDF or DOCX) |
-| `POST` | `/api/agent/start` | Start the autonomous agent loop |
-| `POST` | `/api/agent/stop` | Stop the agent and cancel the scheduler |
-| `POST` | `/api/agent/run-now` | Trigger an immediate job scan |
-| `GET` | `/api/agent/status` | Retrieve agent state, last run time, and next scheduled run |
-| `GET` | `/api/jobs` | List all found jobs with pagination and sorting |
-| `GET` | `/api/jobs/{id}` | Retrieve full details for a single job listing |
+### Example: Starting the agent
 
-### Start Agent — Request
-
-```bash
+```
 curl -X POST http://localhost:8000/api/agent/start \
   -H "Content-Type: application/json" \
-  -d '{
-    "resume_id": "abc123",
-    "user_prompt": "Find senior Python developer roles, preferably remote"
-  }'
+  -d '{"resume_id": "res_mock_001", "prompt": "Senior backend roles, remote, fintech"}'
 ```
-
-### Start Agent — Response
 
 ```json
 {
-  "agent_id": "agt_xyz789",
+  "agent_id": "agt_mock_001",
   "status": "ACTIVE",
-  "next_run": "2026-09-13T09:00:00Z",
-  "message": "Agent started. First scan scheduled for 09:00 AM tomorrow."
+  "next_run": "2026-01-16T09:00:00+00:00",
+  "created_at": "2026-01-15T14:22:10+00:00",
+  "message": "Agent started. First scan at 09:00 AM tomorrow."
 }
 ```
 
-### Job Object
+### Example: Fetching agent status
+
+```
+curl http://localhost:8000/api/agent/status
+```
 
 ```json
 {
-  "id": "job_001",
-  "title": "Senior Python Developer",
-  "company": "Acme Corp",
-  "description_summary": "Backend role focused on FastAPI microservices and cloud infrastructure.",
-  "salary_min": 120000,
-  "salary_max": 160000,
-  "work_mode": "Remote",
-  "location": null,
-  "apply_url": "https://linkedin.com/jobs/view/12345",
-  "match_score": 92,
-  "match_reason": "Strong alignment on Python, FastAPI, and 5+ years of backend experience.",
-  "posted_at": "2026-09-12T14:30:00Z",
-  "source": "LinkedIn"
+  "agent_id": "agt_mock_001",
+  "status": "ACTIVE",
+  "last_run": "2026-01-15T12:22:10+00:00",
+  "next_run": "2026-01-16T09:00:00+00:00",
+  "total_jobs_found": 47,
+  "total_runs": 4,
+  "uptime_days": 4,
+  "avg_jobs_per_run": 11.75,
+  "run_history": [
+    {
+      "run_number": 4,
+      "ran_at": "2026-01-15T12:22:10+00:00",
+      "jobs_found": 12,
+      "duration_seconds": 47,
+      "status": "SUCCESS",
+      "sources": { "LinkedIn": 6, "Indeed": 4, "Glassdoor": 2 }
+    }
+  ]
 }
 ```
-
----
 
 ## Database Schema
 
+Implemented via SQLAlchemy models in `backend/models/models.py`, created
+automatically on startup (see [Database Setup](#database-setup)).
+
 ```
 users
-  id, email, created_at
+  id                   string(36) PRIMARY KEY
+  email                string UNIQUE NOT NULL
+  session_id           string UNIQUE NOT NULL
+  created_at           datetime NOT NULL
 
 resumes
-  id, user_id, file_path, parsed_skills[], parsed_titles[],
-  experience_years, raw_text, created_at
+  id                   string(36) PRIMARY KEY
+  user_id              string(36) REFERENCES users(id)
+  filename             string NOT NULL
+  file_size_kb         integer
+  name, email, phone, location  string
+  experience_years     integer
+  skills, job_titles, education, summary, match_keywords  text (JSON-encoded lists)
+  experience           text (JSON-encoded list of {company, title, duration, description})
+  uploaded_at          datetime NOT NULL
 
-agent_state
-  id, user_id, status, next_run_at, last_run_at, total_runs
+agent_states
+  id                   string(36) PRIMARY KEY
+  user_id              string(36) REFERENCES users(id)
+  resume_id            string(36) REFERENCES resumes(id)
+  prompt               text
+  status               string NOT NULL   -- ACTIVE | STOPPED
+  total_jobs_found      integer NOT NULL DEFAULT 0
+  total_runs            integer NOT NULL DEFAULT 0
+  last_run_at           datetime
+  next_run_at           datetime
+  created_at            datetime NOT NULL
+
+run_logs
+  id                   string(36) PRIMARY KEY
+  agent_id             string(36) REFERENCES agent_states(id)
+  run_number           integer NOT NULL
+  ran_at               datetime NOT NULL
+  duration_seconds     integer
+  jobs_found           integer NOT NULL DEFAULT 0
+  sources_breakdown    text (JSON-encoded dict, e.g. {"LinkedIn": 6})
+  status               string NOT NULL   -- SUCCESS | FAILED
 
 jobs
-  id, agent_id, title, company, description_summary,
-  salary_min, salary_max, work_mode, location, apply_url,
-  match_score, match_reason, posted_at, found_at, source
+  id                   string(36) PRIMARY KEY
+  agent_id             string(36) REFERENCES agent_states(id)
+  title                string NOT NULL
+  company              string NOT NULL
+  description_summary  text
+  salary_min           integer
+  salary_max           integer
+  work_mode            string   -- Remote | Onsite | Hybrid
+  location             string
+  apply_url            string NOT NULL
+  match_score          integer
+  match_reason         text
+  source               string
+  tags                 text (JSON-encoded list)
+  posted_at            datetime
+  found_at             datetime NOT NULL
 ```
-
----
 
 ## Notes
 
 ### API Rate Limits
 
-The Google Gemini 1.5 Flash free tier allows 1,500 requests per day and 15 requests per minute. To stay within these limits, the job scoring service batches multiple job descriptions into a single API call rather than making one call per listing. The Groq API (Llama 3, also free) is configured as an automatic fallback if the Gemini quota is exhausted.
+LinkedIn, Indeed, and Glassdoor each impose strict rate limits on their
+job search APIs. A production scraper should implement exponential
+backoff and bound request volume per scheduled run to stay within each
+platform's terms of service.
 
-### Job Scraping
+### Job Scraping Behavior
 
-CareerBot AI uses [JobSpy](https://github.com/Bunsly/JobSpy), an open-source Python library that scrapes LinkedIn, Indeed, and Glassdoor without requiring platform API keys. Random delays of 2–5 seconds are applied between requests to reduce the risk of IP blocking. A set of cached mock job listings is included in `/backend/tests/mock_data/` as a fallback for live demonstrations if scraping is temporarily unavailable.
+A production scraper is expected to deduplicate listings across sources
+by normalized title, company, and location before scoring, so the same
+role is never surfaced more than once in the job feed.
 
 ### Development Shortcuts
 
-For the hackathon MVP, user authentication is handled via a session ID stored in the browser rather than a full auth system. SQLite is used locally so no database server setup is required. The "Run Now" endpoint (`POST /api/agent/run-now`) allows immediate agent execution during demonstrations without waiting for the scheduled 9:00 AM trigger.
+The backend persists real data — resumes, agent state, run history, and
+jobs all live in the database and survive a page refresh or server
+restart. Resume parsing (`POST /api/resume/upload`) and job match
+scoring both call Gemini 1.5 Flash for real; if `GEMINI_API_KEY` is
+unset or the call fails, both fall back to a safe default (an "Unknown"
+profile, or a static 70% match score) rather than erroring out.
+Starting the agent still seeds a fixed set of 15 mock jobs
+(`backend/seed.py`) so the dashboard has data immediately — "Run Now"
+and the daily 09:00 UTC scheduler both then scrape real listings via
+JobSpy (LinkedIn/Indeed/Glassdoor) and score them with Gemini. If
+scraping returns nothing (rate-limited, blocked, or no results), the run
+completes with zero new jobs rather than failing.
 
----
+The app has no login flow yet, so every request that omits a session
+identifier resolves to a single shared `local-default-session` — in
+effect a single-user local deployment until real auth is added.
 
 ## Roadmap
 
-- [x] Resume upload and AI-driven parsing
-- [x] Autonomous daily scheduler (Loop Engineering)
-- [x] Multi-platform job scraping (LinkedIn, Indeed, Glassdoor)
-- [x] AI match scoring and explanation
-- [x] Filterable job dashboard
-- [ ] Email and push notifications when new listings are found
-- [ ] Per-job resume tailoring suggestions
+- [x] Resume upload and one-click demo profiles
+- [x] Agent lifecycle controls with a live countdown to the next scan
+- [x] Job feed with client-side search, filtering, and sorting
+- [x] Resume profile view with skill-demand charting
+- [x] Run history with trend and source-breakdown charts
+- [x] Persistent storage with the schema above
+- [x] Real resume parsing (PDF/DOCX) with Gemini
+- [x] Live job board scraping (JobSpy) and Gemini match scoring
+- [x] Daily 09:00 UTC autonomous scan via APScheduler
+- [ ] Cross-source deduplication by normalized title/company/location
 - [ ] User authentication and multi-user support
-- [ ] One-click application tracking
 
----
+## Team
+
+| Role | Responsibilities |
+|---|---|
+| Frontend Developer | React UI, job cards, agent control panel, theme system, Framer Motion animations |
+| Backend Developer | FastAPI endpoints, SQLAlchemy models, database schema, migrations |
+| AI / Scraping Developer | Gemini API integration, resume parsing, job scoring, JobSpy scraping |
+| DevOps / Tech Lead | Docker, Vercel deployment, Railway backend, CI/CD, code review |
+
+> Built for the Panaversity Agentic AI Course Hackathon — September 2026
+
+## License
+
+This project is licensed under the MIT License. See the `LICENSE` file for
+details.
