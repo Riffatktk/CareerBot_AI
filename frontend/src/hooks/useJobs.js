@@ -14,7 +14,11 @@ export function useJobs() {
     refetchOnMount: false,
   });
 
-  const jobs = useMemo(() => query.data || [], [query.data]);
+  const jobs = useMemo(() => {
+  if (Array.isArray(query.data)) return query.data;
+  if (Array.isArray(query.data?.items)) return query.data.items;
+  return [];
+}, [query.data]);
 
   const filteredJobs = useMemo(() => {
     let result = jobs.filter((job) => {
