@@ -1,6 +1,26 @@
 import axios from "axios";
 import { API_BASE_URL } from "@/utils/constants";
 
+const SESSION_ID_KEY = "careerbot_session_id";
+const AGENT_ID_KEY = "careerbot_agent_id";
+
+function getOrCreateSessionId() {
+  let sessionId = localStorage.getItem(SESSION_ID_KEY);
+  if (!sessionId) {
+    sessionId = crypto.randomUUID();
+    localStorage.setItem(SESSION_ID_KEY, sessionId);
+  }
+  return sessionId;
+}
+
+function getAgentId() {
+  return localStorage.getItem(AGENT_ID_KEY);
+}
+
+function setAgentId(agentId) {
+  if (agentId) localStorage.setItem(AGENT_ID_KEY, agentId);
+}
+
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
@@ -10,6 +30,8 @@ const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
+  config.headers["X-Session-Id"] = getOrCreateSessionId();
+
   if (import.meta.env.DEV) {
     console.log(`[API] ${config.method?.toUpperCase()} ${config.url}`);
   }
@@ -58,23 +80,34 @@ export async function uploadResume(file) {
 export async function startAgent({ resumeId, prompt }) {
   const { data } = await apiClient.post("/api/agent/start", {
     resume_id: resumeId,
-    prompt,
+    user_prompt: prompt,
   });
+  setAgentId(data.agent_id);
   return data;
 }
 
 export async function stopAgent() {
-  const { data } = await apiClient.post("/api/agent/stop");
+  const { data } = await apiClient.post("/api/agent/stop", null, {
+    params: { agent_id: getAgentId() },
+  });
   return data;
 }
 
 export async function runAgentNow() {
-  const { data } = await apiClient.post("/api/agent/run-now");
+  const { data } = await apiClient.post("/api/agent/run-now", null, {
+    params: { agent_id: getAgentId() },
+  });
   return data;
 }
 
 export async function getAgentStatus() {
-  const { data } = await apiClient.get("/api/agent/status");
+  const agentId = getAgentId();
+  if (!agentId) {
+    return null;
+  }
+  const { data } = await apiClient.get("/api/agent/status", {
+    params: { agent_id: agentId },
+  });
   return data;
 }
 
